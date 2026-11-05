@@ -3,14 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.database import engine
-
+from app.routes import documents  # <-- 1. Import your documents router
 
 app = FastAPI(
     title="DocuMind API",
     description="AI-powered document assistant",
     version="1.0.0"
 )
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,6 +21,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# <-- 2. Register the documents router here
+app.include_router(documents.router)
 
 
 @app.get("/")
@@ -41,7 +43,6 @@ def health_check():
 
 @app.get("/health/db")
 def database_health():
-
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
