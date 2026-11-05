@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+backend/documind.db
+
+# Environment files
+.env
+.env.*
+!.env.example
+frontend/.env.local
+
+# Next.js
+frontend/node_modules/
+.next/
+frontend/.next/dev/
+frontend/out/
+frontend/build/
+frontend/next-env.d.ts
+*.tsbuildinfo
+.vercel/
+
+# Package manager and debug logs
+.pnp.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Editor
+.vscode/
+
+# Operating system
+.DS_Store
+Thumbs.db
+desktop.ini
