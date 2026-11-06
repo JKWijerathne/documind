@@ -1,11 +1,11 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from app.services.pdf_service import extract_text_from_pdf
 from app.chunking import chunk_document
+from app.services.embedding_service import generate_batch_embeddings
 
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
-
+MAX_FILE_SIZE = 10 * 1024 * 1024  
 
 @router.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
@@ -46,6 +46,12 @@ async def upload_document(file: UploadFile = File(...)):
         chunk_size=800,
         overlap=120
     )
+
+    chunk_texts = [c["content"] for c in chunks]
+    embeddings = generate_batch_embeddings(chunk_texts)
+
+    for i, chunk in enumerate(chunks):
+        chunk["embedding"] = embeddings[i]
 
     return {
         "filename": file.filename,
