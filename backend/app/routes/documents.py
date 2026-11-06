@@ -1,15 +1,15 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from app.services.pdf_service import extract_text_from_pdf
+from app.chunking import chunk_document
 
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
-MAX_FILE_SIZE = 10 * 1024 * 1024  
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
 @router.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
     header = await file.read(1024)
-    
     await file.seek(0)
     
     if not header.startswith(b"%PDF-"):
@@ -18,8 +18,9 @@ async def upload_document(file: UploadFile = File(...)):
             detail="Invalid file format. The uploaded file is not a genuine PDF."
         )
 
+
     contents = bytearray()
-    chunk_size = 1024 * 64  
+    chunk_size = 1024 * 64 
     total_size = 0
 
     while True:
@@ -36,8 +37,19 @@ async def upload_document(file: UploadFile = File(...)):
 
     pages = extract_text_from_pdf(bytes(contents))
 
+    
+    document_id = 1
+
+    chunks = chunk_document(
+        document_id=document_id,
+        pages=pages,
+        chunk_size=800,
+        overlap=120
+    )
+
     return {
         "filename": file.filename,
         "total_pages": len(pages),
-        "pages": pages
+        "total_chunks": len(chunks),
+        "chunks": chunks
     }

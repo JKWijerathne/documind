@@ -1,4 +1,4 @@
-import fitz  # PyMuPDF
+import pymupdf  
 from fastapi import HTTPException
 
 def extract_text_from_pdf(file_bytes: bytes):
@@ -6,7 +6,7 @@ def extract_text_from_pdf(file_bytes: bytes):
     Takes raw PDF bytes, opens it with PyMuPDF, and extracts text page by page.
     """
     try:
-        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        doc = pymupdf.open(stream=file_bytes, filetype="pdf")
         
         if len(doc) == 0:
             raise HTTPException(status_code=400, detail="The uploaded PDF file is empty.")
