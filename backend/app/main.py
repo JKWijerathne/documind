@@ -2,8 +2,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app.database import engine
-from app.routes import documents  # <-- 1. Import your documents router
+from app.database import engine, Base
+from app.models import Document, DocumentChunk, Conversation 
+from app.routes import documents, search  
 
 app = FastAPI(
     title="DocuMind API",
@@ -22,8 +23,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# <-- 2. Register the documents router here
 app.include_router(documents.router)
+app.include_router(search.router)  
+
+
+@app.on_event("startup")
+def startup_db_client():
+    with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+    
+    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/")
