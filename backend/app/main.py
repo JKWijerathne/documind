@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+from app.routes import documents, search, chat
 
 from app.database import engine, Base
 from app.models import Document, DocumentChunk, Conversation 
@@ -25,6 +26,7 @@ app.add_middleware(
 
 app.include_router(documents.router)
 app.include_router(search.router)  
+app.include_router(chat.router)
 
 
 @app.on_event("startup")
