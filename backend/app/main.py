@@ -5,7 +5,6 @@ from app.routes import documents, search, chat
 
 from app.database import engine, Base
 from app.models import Document, DocumentChunk, Conversation 
-from app.routes import documents, search  
 
 app = FastAPI(
     title="DocuMind API",
