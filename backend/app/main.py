@@ -1,39 +1,46 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
-from app.routes import documents, search, chat
 
+from app.config import settings
 from app.database import engine, Base
-from app.models import Document, DocumentChunk, Conversation 
+from app.models import Document, DocumentChunk, Conversation  # noqa: F401 (registers tables)
+from app.routes import documents, search, chat
+from app.services.embedding_service import get_embedding_model
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    with engine.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+
+    Base.metadata.create_all(bind=engine)
+
+    get_embedding_model()
+
+    yield
+
 
 app = FastAPI(
     title="DocuMind API",
     description="AI-powered document assistant",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
-    ],
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(documents.router)
-app.include_router(search.router)  
+app.include_router(search.router)
 app.include_router(chat.router)
-
-
-@app.on_event("startup")
-def startup_db_client():
-    with engine.begin() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-    
-    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/")

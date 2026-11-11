@@ -2,9 +2,13 @@ import re
 import math
 from collections import defaultdict
 
+# How many non-empty lines at the top/ bottom of a page count as "edge" lines
+EDGE_LINE_COUNT = 2
+# Header/footer lines are short, longer lines are real content
+MAX_HEADER_LENGTH = 120
+
 
 def clean_text(text: str) -> str:
-  
     # Remove null characters
     text = text.replace("\x00", " ")
 
@@ -23,39 +27,42 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 
-def remove_repeated_headers_footers(pages: list[dict]) -> list[dict]:
+def unwrap_lines(text: str) -> str:
+    return re.sub(r"(?<!\n)\n(?!\n)", " ", text)
+
+
+def _normalize_line(line: str) -> str:
+    return re.sub(r"\d+", "#", line.strip().lower())
+
+
+def _edge_positions(lines: list[str]) -> set[int]:
     
-    if len(pages) < 2:
-        return [
-            {
-                **page,
-                "text": clean_text(page.get("text", ""))
-            }
-            for page in pages
-        ]
+    non_empty = [i for i, line in enumerate(lines) if line.strip()]
+    return set(non_empty[:EDGE_LINE_COUNT] + non_empty[-EDGE_LINE_COUNT:])
+
+
+def remove_repeated_headers_footers(pages: list[dict]) -> list[dict]:
+    cleaned_pages = [
+        {**page, "text": clean_text(page.get("text", ""))}
+        for page in pages
+    ]
+
+    if len(cleaned_pages) < 2:
+        return cleaned_pages
 
     edge_occurrences = defaultdict(set)
 
-    # Identify lines appearing strictly at the top or bottom edges of pages
-    for page_index, page in enumerate(pages):
-        lines = [
-            line.strip()
-            for line in clean_text(page.get("text", "")).splitlines()
-            if line.strip()
-        ]
-        
-        if not lines:
-            continue
+    # Detection: which normalized lines show up at the page edges?
+    for page_index, page in enumerate(cleaned_pages):
+        lines = page["text"].splitlines()
 
-        # Look only at the first 2 or last 2 lines of the page
-        edge_lines = set(lines[:2] + lines[-2:])
+        for position in _edge_positions(lines):
+            line = lines[position].strip()
+            if len(line) <= MAX_HEADER_LENGTH:
+                edge_occurrences[_normalize_line(line)].add(page_index)
 
-        for line in edge_lines:
-            if len(line) <= 120:
-                edge_occurrences[line].add(page_index)
-
-    # A line must appear on at least 60% of pages to be considered a header/footer
-    threshold = max(2, math.ceil(len(pages) * 0.6))
+    # A line must appear at the edges of at least 60% of pages
+    threshold = max(2, math.ceil(len(cleaned_pages) * 0.6))
 
     repeated_edge_lines = {
         line
@@ -63,27 +70,27 @@ def remove_repeated_headers_footers(pages: list[dict]) -> list[dict]:
         if len(page_indexes) >= threshold
     }
 
-    cleaned_pages = []
+    if not repeated_edge_lines:
+        return cleaned_pages
 
-    for page in pages:
-        raw_text = clean_text(page.get("text", ""))
-        lines = raw_text.splitlines()
-        filtered_lines = []
+    result = []
 
-        for line in lines:
-            stripped = line.strip()
-            # Only filter out the line if it's a confirmed header/footer located near an edge
-            is_edge = len(lines) > 0 and (stripped == lines[0] or stripped == lines[-1] or (len(lines) > 1 and stripped == lines[1]))
-            if stripped in repeated_edge_lines and is_edge:
-                continue
-            filtered_lines.append(line)
+    for page in cleaned_pages:
+        lines = page["text"].splitlines()
+        edges = _edge_positions(lines)
 
-        cleaned_pages.append({
-            **page,
-            "text": clean_text("\n".join(filtered_lines))
-        })
+        kept = [
+            line
+            for position, line in enumerate(lines)
+            if not (
+                position in edges
+                and _normalize_line(line) in repeated_edge_lines
+            )
+        ]
 
-    return cleaned_pages
+        result.append({**page, "text": clean_text("\n".join(kept))})
+
+    return result
 
 
 def chunk_text(
@@ -91,7 +98,7 @@ def chunk_text(
     chunk_size: int = 800,
     overlap: int = 120
 ) -> list[str]:
-   
+
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
 
@@ -132,7 +139,6 @@ def chunk_text(
         if end >= len(text):
             break
 
-
         next_start = max(start + 1, end - overlap)
 
         while (
@@ -152,13 +158,12 @@ def chunk_document(
     chunk_size: int = 800,
     overlap: int = 120
 ) -> list[dict]:
-    
     cleaned_pages = remove_repeated_headers_footers(pages)
     all_chunks = []
 
     for page in cleaned_pages:
         page_number = page["page_number"]
-        text = page["text"]
+        text = unwrap_lines(page["text"])
 
         page_chunks = chunk_text(
             text,

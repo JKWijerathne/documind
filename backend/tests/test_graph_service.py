@@ -6,9 +6,11 @@ from app.services import graph_service
 def test_run_rag_graph_retrieves_context_and_returns_page_sources(monkeypatch):
     chunk = SimpleNamespace(
         document_id=7,
+        filename="project.pdf",
         page_number=3,
         chunk_index=1,
-        content="The project was founded in 2020."
+        content="The project was founded in 2020.",
+        distance=0.1,
     )
     retrieval_calls = []
     embedding_calls = []
@@ -22,8 +24,8 @@ def test_run_rag_graph_retrieves_context_and_returns_page_sources(monkeypatch):
         retrieval_calls.append((db, query_embedding, top_k, document_id))
         return [chunk]
 
-    def fake_generate_content(*, model, contents):
-        generation_calls.append((model, contents))
+    def fake_generate_content(*, model, contents, config):
+        generation_calls.append((model, contents, config))
         return SimpleNamespace(text="It was founded in 2020. [Page 3]")
 
     monkeypatch.setattr(graph_service, "generate_embedding", fake_embedding)
@@ -51,10 +53,17 @@ def test_run_rag_graph_retrieves_context_and_returns_page_sources(monkeypatch):
 
     assert embedding_calls == ["When was the project founded?"]
     assert retrieval_calls == [(db, [0.1, 0.2, 0.3], 2, 7)]
-    assert generation_calls[0][1].find("[Page 3]: The project was founded in 2020.") >= 0
+    assert "[project.pdf, Page 3]: The project was founded in 2020." in generation_calls[0][1]
+    assert generation_calls[0][2].temperature == 0.2
     assert result == {
         "answer": "It was founded in 2020. [Page 3]",
         "sources": [
-            {"document_id": 7, "page_number": 3, "chunk_index": 1}
+            {
+                "document_id": 7,
+                "filename": "project.pdf",
+                "page_number": 3,
+                "chunk_index": 1,
+                "relevance": 0.9,
+            }
         ]
     }

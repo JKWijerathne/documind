@@ -1,15 +1,24 @@
+import logging
+import os
+
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
 from app.database import get_db
 from app.models import Document, DocumentChunk
 from app.services.pdf_service import extract_text_from_pdf
 from app.chunking import chunk_document
 from app.services.embedding_service import generate_batch_embeddings
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
-MAX_FILE_SIZE = 10 * 1024 * 1024  
+MAX_FILE_SIZE = 10 * 1024 * 1024
+READ_CHUNK_SIZE = 64 * 1024
+CHUNK_SIZE = 800
+CHUNK_OVERLAP = 120
 
 
 @router.get("/")
@@ -39,70 +48,82 @@ def list_documents(db: Session = Depends(get_db)):
 
 
 @router.post("/upload")
-async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    header = await file.read(1024)
-    await file.seek(0)
-    
+def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    stream = file.file 
+
+    header = stream.read(8)
+    stream.seek(0)
+
     if not header.startswith(b"%PDF-"):
         raise HTTPException(
             status_code=400,
-            detail="Invalid file format. The uploaded file is not a genuine PDF."
+            detail="Invalid file format. The uploaded file is not a genuine PDF.",
         )
 
-
     contents = bytearray()
-    chunk_size = 1024 * 64 
-    total_size = len(header)
+    total_size = 0
 
     while True:
-        chunk = await file.read(chunk_size)
+        chunk = stream.read(READ_CHUNK_SIZE)
         if not chunk:
             break
         total_size += len(chunk)
         if total_size > MAX_FILE_SIZE:
             raise HTTPException(
-                status_code=400,
-                detail="File size exceeds the maximum allowed limit of 10MB."
+                status_code=413,
+                detail="File size exceeds the maximum allowed limit of 10MB.",
             )
         contents.extend(chunk)
 
     pages = extract_text_from_pdf(bytes(contents))
 
-    # Keep the document and its chunks in one transaction so failed processing
-    # cannot leave a document that appears usable but has no completed chunks.
-    db_document = Document(filename=file.filename)
-    db.add(db_document)
-    db.flush()
+    filename = os.path.basename(file.filename or "") or "untitled.pdf"
 
-    # 2. Chunk text
-    chunks = chunk_document(
-        document_id=db_document.id,
-        pages=pages,
-        chunk_size=800,
-        overlap=120
-    )
-    if not chunks:
-        raise HTTPException(
-            status_code=400,
-            detail="No searchable text was found in the PDF.",
-        )
+    try:
+        db_document = Document(filename=filename)
+        db.add(db_document)
+        db.flush()
 
-    # 3. Generate embeddings
-    chunk_texts = [c["content"] for c in chunks]
-    embeddings = generate_batch_embeddings(chunk_texts)
-
-    # 4. Save chunks and embeddings into database
-    for i, chunk_data in enumerate(chunks):
-        db_chunk = DocumentChunk(
+        chunks = chunk_document(
             document_id=db_document.id,
-            page_number=chunk_data["page_number"],
-            chunk_index=chunk_data["chunk_index"],
-            content=chunk_data["content"],
-            embedding=embeddings[i]
+            pages=pages,
+            chunk_size=CHUNK_SIZE,
+            overlap=CHUNK_OVERLAP,
         )
-        db.add(db_chunk)
 
-    db.commit()
+        if not chunks:
+            raise HTTPException(
+                status_code=400,
+                detail="No searchable text was found in the PDF.",
+            )
+
+        embeddings = generate_batch_embeddings([c["content"] for c in chunks])
+
+        db.add_all(
+            [
+                DocumentChunk(
+                    document_id=db_document.id,
+                    page_number=chunk_data["page_number"],
+                    chunk_index=chunk_data["chunk_index"],
+                    content=chunk_data["content"],
+                    embedding=embeddings[i],
+                )
+                for i, chunk_data in enumerate(chunks)
+            ]
+        )
+
+        db.commit()
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to process uploaded document")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to process the document. Please try again.",
+        )
 
     return {
         "document_id": db_document.id,
@@ -110,7 +131,7 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
         "total_pages": len(pages),
         "total_chunks": len(chunks),
         "status": "ready",
-        "message": "Document successfully uploaded, chunked, embedded, and saved to Neon PostgreSQL!"
+        "message": "Document successfully uploaded, chunked, embedded, and saved.",
     }
 
 
