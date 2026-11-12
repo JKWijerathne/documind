@@ -16,19 +16,21 @@ export default function DocumentUploader() {
   const [result, setResult] = useState<DocumentUploadResult | null>(null);
 
   function chooseFile(nextFile: File | undefined) {
-    if (!nextFile) return;
+    if (!nextFile || isUploading) return;
     setError(null);
     setResult(null);
 
     if (!nextFile.name.toLowerCase().endsWith(".pdf")) {
       setFile(null);
       setError("Choose a PDF file to upload.");
+      if (inputRef.current) inputRef.current.value = "";
       return;
     }
 
     if (nextFile.size > MAX_FILE_SIZE) {
       setFile(null);
       setError("This file is larger than the 10 MB upload limit.");
+      if (inputRef.current) inputRef.current.value = "";
       return;
     }
 
@@ -72,14 +74,19 @@ export default function DocumentUploader() {
           }}
           onDragLeave={(event) => {
             event.preventDefault();
-            setIsDragging(false);
+            if (
+              !(event.relatedTarget instanceof Node) ||
+              !event.currentTarget.contains(event.relatedTarget)
+            ) {
+              setIsDragging(false);
+            }
           }}
           onDrop={(event) => {
             event.preventDefault();
             setIsDragging(false);
             chooseFile(event.dataTransfer.files[0]);
           }}
-          className={`flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-5 py-10 text-center transition ${
+          className={`flex min-h-64 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed px-5 py-10 text-center transition focus-within:ring-2 focus-within:ring-indigo-300 ${
             isDragging
               ? "border-indigo-300 bg-indigo-400/10"
               : "border-slate-700 bg-[#0b1019] hover:border-indigo-400/70 hover:bg-indigo-400/[0.03]"

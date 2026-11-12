@@ -1,34 +1,83 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import SiteHeader from "@/components/site-header";
-import { sendChatMessage } from "@/lib/api";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
+import ReactMarkdown from "react-markdown";
+import {
+  listDocuments,
+  sendChatMessage,
+  type ChatSource,
+  type DocumentRecord,
+} from "@/lib/api";
 
 interface Message {
   id: number;
   role: "user" | "assistant";
   content: string;
-  sources?: Array<{
-    document_id: number;
-    page_number: number;
-    chunk_index: number;
-  }>;
+  sources?: ChatSource[];
 }
 
 const suggestedQuestions = [
-  "Summarize my documents",
-  "What are the key takeaways?",
-  "Find important dates",
+  "What evidence supports the document's main conclusion?",
+  "Which methods does the document describe?",
+  "What deadlines or dates are mentioned?",
 ];
 
+function parseDocumentId(value: string | null): number | undefined {
+  if (!value || !/^[1-9]\d*$/.test(value)) return undefined;
+  const documentId = Number(value);
+  return Number.isSafeInteger(documentId) ? documentId : undefined;
+}
+
 export default function ChatPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-[calc(100vh-73px)] items-center justify-center bg-[#080b12] text-sm text-slate-400">
+          Loading chat…
+        </main>
+      }
+    >
+      <ChatExperience />
+    </Suspense>
+  );
+}
+
+function ChatExperience() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedDocumentId = parseDocumentId(searchParams.get("document"));
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messageSequence = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    listDocuments()
+      .then((loadedDocuments) => {
+        if (active) setDocuments(loadedDocuments);
+      })
+      .catch((loadError: unknown) => {
+        if (active) {
+          setDocumentsError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Could not load the document list.",
+          );
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -52,7 +101,7 @@ export default function ChatPage() {
     setIsLoading(true);
 
     try {
-      const response = await sendChatMessage(userQuery);
+      const response = await sendChatMessage(userQuery, 4, selectedDocumentId);
       setMessages((currentMessages) => [
         ...currentMessages,
         {
@@ -63,6 +112,7 @@ export default function ChatPage() {
         },
       ]);
     } catch (requestError: unknown) {
+      setQuery((currentQuery) => currentQuery || userQuery);
       setError(
         requestError instanceof Error
           ? requestError.message
@@ -78,10 +128,26 @@ export default function ChatPage() {
     setError(null);
   }
 
+  function changeDocumentScope(value: string) {
+    const nextSearchParams = new URLSearchParams(searchParams.toString());
+    if (value) {
+      nextSearchParams.set("document", value);
+    } else {
+      nextSearchParams.delete("document");
+    }
+
+    const queryString = nextSearchParams.toString();
+    router.replace(`/chat${queryString ? `?${queryString}` : ""}`, {
+      scroll: false,
+    });
+  }
+
+  const selectedDocumentExists = documents.some(
+    (doc) => doc.id === selectedDocumentId && doc.status === "ready",
+  );
+
   return (
-    <div className="flex min-h-screen flex-col bg-[#080b12] text-slate-100">
-      <SiteHeader />
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-5 pb-6 pt-10 sm:px-8">
+    <main className="mx-auto flex min-h-[calc(100vh-73px)] w-full max-w-5xl flex-1 flex-col bg-[#080b12] px-5 pb-6 pt-10 text-slate-100 sm:px-8">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-indigo-300">Document assistant</p>
@@ -89,7 +155,8 @@ export default function ChatPage() {
               Ask your documents
             </h1>
             <p className="mt-2 text-sm text-slate-400">
-              Answers are generated from your indexed PDFs and include source pages.
+              Answers include source pages. Each question is independent, so
+              include relevant details instead of relying on earlier replies.
             </p>
           </div>
           <Link
@@ -99,6 +166,38 @@ export default function ChatPage() {
             Manage documents <span className="ml-2" aria-hidden="true">→</span>
           </Link>
         </div>
+
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <label htmlFor="document-scope" className="text-xs font-medium text-slate-400">
+            Search in
+          </label>
+          <select
+            id="document-scope"
+            value={selectedDocumentId?.toString() ?? ""}
+            onChange={(event) => changeDocumentScope(event.target.value)}
+            className="min-h-10 rounded-xl border border-white/10 bg-[#0d121b] px-3 text-sm text-slate-200 outline-none focus:border-indigo-300/50"
+          >
+            <option value="">All documents</option>
+            {selectedDocumentId && !selectedDocumentExists && (
+              <option value={selectedDocumentId}>
+                Document {selectedDocumentId}
+              </option>
+            )}
+            {documents
+              .filter((doc) => doc.status === "ready")
+              .map((doc) => (
+                <option key={doc.id} value={doc.id}>
+                  {doc.filename}
+                </option>
+              ))}
+          </select>
+        </div>
+        {documentsError && (
+          <p role="status" className="mb-4 text-xs text-amber-200/80">
+            Could not load document names ({documentsError}); you can still chat
+            across all documents.
+          </p>
+        )}
 
         <section
           aria-label="Conversation"
@@ -160,7 +259,15 @@ export default function ChatPage() {
                   <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em] opacity-60">
                     {message.role === "user" ? "You" : "DocuMind"}
                   </p>
-                  <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
+                  {message.role === "assistant" ? (
+                    <div className="space-y-3 text-sm leading-6 [&_a]:text-indigo-200 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-indigo-300/30 [&_blockquote]:pl-3 [&_code]:rounded [&_code]:bg-black/20 [&_code]:px-1 [&_li]:ml-5 [&_li]:list-disc [&_ol_li]:list-decimal [&_ol]:space-y-1 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-black/20 [&_pre]:p-3 [&_strong]:font-semibold [&_ul]:space-y-1">
+                      <ReactMarkdown>{message.content}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap text-sm leading-6">
+                      {message.content}
+                    </p>
+                  )}
                   {message.sources && message.sources.length > 0 && (
                     <div className="mt-4 border-t border-white/[0.08] pt-3">
                       <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">
@@ -172,7 +279,7 @@ export default function ChatPage() {
                             key={`${message.id}-${source.document_id}-${source.page_number}-${index}`}
                             className="rounded-lg border border-indigo-300/10 bg-indigo-300/[0.06] px-2.5 py-1.5 text-xs text-indigo-100/80"
                           >
-                            Document {source.document_id} · Page {source.page_number}
+                            {source.filename} · Page {source.page_number}
                           </span>
                         ))}
                       </div>
@@ -211,11 +318,16 @@ export default function ChatPage() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
+                  if (
+                    event.key === "Enter" &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing
+                  ) {
                     event.preventDefault();
                     event.currentTarget.form?.requestSubmit();
                   }
                 }}
+                maxLength={2000}
                 placeholder="Ask something about your PDFs…"
                 rows={1}
                 className="max-h-32 min-h-10 flex-1 resize-y bg-transparent py-2 text-sm text-slate-100 outline-none placeholder:text-slate-600"
@@ -241,6 +353,5 @@ export default function ChatPage() {
           </form>
         </section>
       </main>
-    </div>
   );
 }

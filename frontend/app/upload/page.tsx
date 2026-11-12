@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import DocumentUploader from "@/components/document-uploader";
-import SiteHeader from "@/components/site-header";
 
 export const metadata: Metadata = {
   title: "Upload documents | DocuMind",
@@ -10,7 +9,6 @@ export const metadata: Metadata = {
 export default function UploadPage() {
   return (
     <div className="min-h-screen bg-[#080b12] text-slate-100">
-      <SiteHeader />
       <main className="mx-auto max-w-4xl px-5 py-12 sm:px-8 sm:py-16">
         <div className="mb-8">
           <p className="text-sm font-medium text-indigo-300">Your knowledge base</p>

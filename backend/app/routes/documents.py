@@ -49,37 +49,36 @@ def list_documents(db: Session = Depends(get_db)):
 
 @router.post("/upload")
 def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    stream = file.file 
-
-    header = stream.read(8)
-    stream.seek(0)
-
-    if not header.startswith(b"%PDF-"):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file format. The uploaded file is not a genuine PDF.",
-        )
-
-    contents = bytearray()
-    total_size = 0
-
-    while True:
-        chunk = stream.read(READ_CHUNK_SIZE)
-        if not chunk:
-            break
-        total_size += len(chunk)
-        if total_size > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=413,
-                detail="File size exceeds the maximum allowed limit of 10MB.",
-            )
-        contents.extend(chunk)
-
-    pages = extract_text_from_pdf(bytes(contents))
-
-    filename = os.path.basename(file.filename or "") or "untitled.pdf"
-
     try:
+        stream = file.file
+
+        header = stream.read(8)
+        stream.seek(0)
+
+        if not header.startswith(b"%PDF-"):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid file format. The uploaded file is not a genuine PDF.",
+            )
+
+        contents = bytearray()
+        total_size = 0
+
+        while True:
+            chunk = stream.read(READ_CHUNK_SIZE)
+            if not chunk:
+                break
+            total_size += len(chunk)
+            if total_size > MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail="File size exceeds the maximum allowed limit of 10MB.",
+                )
+            contents.extend(chunk)
+
+        pages = extract_text_from_pdf(bytes(contents))
+        filename = os.path.basename(file.filename or "") or "untitled.pdf"
+
         db_document = Document(filename=filename)
         db.add(db_document)
         db.flush()

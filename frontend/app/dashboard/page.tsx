@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import SiteHeader from "@/components/site-header";
 import { deleteDocument, listDocuments, type DocumentRecord } from "@/lib/api";
 
 function formatUploadDate(value: string | null): string {
@@ -17,6 +16,24 @@ function formatUploadDate(value: string | null): string {
       });
 }
 
+type DocumentLoadResult =
+      | { success: true; documents: DocumentRecord[] }
+      | { success: false; message: string };
+
+async function fetchDocumentList(): Promise<DocumentLoadResult> {
+      try {
+        return { success: true, documents: await listDocuments() };
+      } catch (error: unknown) {
+        return {
+          success: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Could not load documents from the API.",
+        };
+      }
+}
+
 export default function DashboardPage() {
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -27,25 +44,17 @@ export default function DashboardPage() {
   useEffect(() => {
     let active = true;
 
-    listDocuments()
-      .then((loadedDocuments) => {
-        if (active) {
-          setDocuments(loadedDocuments);
+    fetchDocumentList().then((result) => {
+      if (active) {
+        if (result.success) {
+          setDocuments(result.documents);
           setLoadError(null);
+        } else {
+          setLoadError(result.message);
         }
-      })
-      .catch((error: unknown) => {
-        if (active) {
-          setLoadError(
-            error instanceof Error
-              ? error.message
-              : "Could not load documents from the API.",
-          );
-        }
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
+        setIsLoading(false);
+      }
+    });
 
     return () => {
       active = false;
@@ -55,37 +64,33 @@ export default function DashboardPage() {
   async function refreshDocuments() {
     setIsLoading(true);
     setLoadError(null);
-    try {
-      setDocuments(await listDocuments());
-    } catch (error: unknown) {
-      setLoadError(
-        error instanceof Error
-          ? error.message
-          : "Could not load documents from the API.",
-      );
-    } finally {
-      setIsLoading(false);
+    const result = await fetchDocumentList();
+    if (result.success) {
+      setDocuments(result.documents);
+    } else {
+      setLoadError(result.message);
     }
+    setIsLoading(false);
   }
 
-  async function handleDelete(document: DocumentRecord) {
+  async function handleDelete(doc: DocumentRecord) {
     const confirmed = window.confirm(
-      `Delete "${document.filename}" and all of its indexed content?`,
+      `Delete "${doc.filename}" and all of its indexed content?`,
     );
     if (!confirmed) return;
 
-    setDeletingId(document.id);
+    setDeletingId(doc.id);
     setActionError(null);
     try {
-      await deleteDocument(document.id);
+      await deleteDocument(doc.id);
       setDocuments((currentDocuments) =>
-        currentDocuments.filter((item) => item.id !== document.id),
+        currentDocuments.filter((item) => item.id !== doc.id),
       );
     } catch (error: unknown) {
       setActionError(
         error instanceof Error
           ? error.message
-          : `Could not delete ${document.filename}.`,
+          : `Could not delete ${doc.filename}.`,
       );
     } finally {
       setDeletingId(null);
@@ -94,7 +99,6 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#080b12] text-slate-100">
-      <SiteHeader />
       <main className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-16">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -186,9 +190,9 @@ export default function DashboardPage() {
 
           {documents.length > 0 && (
             <ul className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0d121b]">
-              {documents.map((document, index) => (
+              {documents.map((doc, index) => (
                 <li
-                  key={document.id}
+                  key={doc.id}
                   className={`flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6 ${
                     index > 0 ? "border-t border-white/[0.07]" : ""
                   }`}
@@ -199,39 +203,47 @@ export default function DashboardPage() {
                     </span>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-100">
-                        {document.filename}
+                        {doc.filename}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        Added {formatUploadDate(document.upload_date)} · {document.total_chunks}{" "}
-                        {document.total_chunks === 1 ? "chunk" : "chunks"} · ID {document.id}
+                        Added {formatUploadDate(doc.upload_date)} · {doc.total_chunks}{" "}
+                        {doc.total_chunks === 1 ? "chunk" : "chunks"} · ID {doc.id}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-4 sm:justify-end">
                     <span
                       className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
-                        document.status === "ready"
+                        doc.status === "ready"
                           ? "border-emerald-300/15 bg-emerald-300/[0.07] text-emerald-200"
                           : "border-rose-300/15 bg-rose-300/[0.07] text-rose-200"
                       }`}
                     >
                       <span
                         className={`size-1.5 rounded-full ${
-                          document.status === "ready"
+                          doc.status === "ready"
                             ? "bg-emerald-300"
                             : "bg-rose-300"
                         }`}
                       />
-                      {document.status === "ready" ? "Ready" : "No indexed content"}
+                      {doc.status === "ready" ? "Ready" : "No indexed content"}
                     </span>
+                    {doc.status === "ready" && (
+                      <Link
+                        href={`/chat?document=${doc.id}`}
+                        className="rounded-lg px-3 py-2 text-xs font-medium text-indigo-200 transition hover:bg-indigo-300/10 hover:text-white"
+                      >
+                        Chat with this
+                      </Link>
+                    )}
                     <button
                       type="button"
-                      onClick={() => handleDelete(document)}
-                      disabled={deletingId === document.id}
+                      onClick={() => handleDelete(doc)}
+                      disabled={deletingId === doc.id}
                       className="rounded-lg px-3 py-2 text-xs font-medium text-slate-400 transition hover:bg-rose-400/10 hover:text-rose-200 disabled:cursor-wait disabled:opacity-50"
-                      aria-label={`Delete ${document.filename}`}
+                      aria-label={`Delete ${doc.filename}`}
                     >
-                      {deletingId === document.id ? "Deleting…" : "Delete"}
+                      {deletingId === doc.id ? "Deleting…" : "Delete"}
                     </button>
                   </div>
                 </li>

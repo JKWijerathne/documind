@@ -1,8 +1,13 @@
 const SERVER_API_URL = "/backend";
-const BROWSER_API_URL =
-  typeof window === "undefined"
-    ? "/backend"
-    : (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000");
+const BROWSER_API_URL = "/backend";
+
+export interface ChatSource {
+  document_id: number;
+  filename: string;
+  page_number: number;
+  chunk_index: number;
+  relevance: number;
+}
 
 export interface DocumentRecord {
   id: number;
@@ -24,11 +29,7 @@ export interface DocumentUploadResult {
 export interface ChatResponse {
   query: string;
   answer: string;
-  sources: Array<{
-    document_id: number;
-    page_number: number;
-    chunk_index: number;
-  }>;
+  sources: ChatSource[];
 }
 
 function getErrorMessage(payload: unknown, fallback: string): string {
@@ -42,10 +43,30 @@ function getErrorMessage(payload: unknown, fallback: string): string {
   if (
     typeof payload === "object" &&
     payload !== null &&
-    "detail" in payload &&
-    typeof payload.detail === "string"
+    "detail" in payload
   ) {
-    return payload.detail;
+    if (typeof payload.detail === "string") {
+      return payload.detail;
+    }
+
+    if (Array.isArray(payload.detail)) {
+      const messages = payload.detail
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (
+            typeof item === "object" &&
+            item !== null &&
+            "msg" in item &&
+            typeof item.msg === "string"
+          ) {
+            return item.msg;
+          }
+          return null;
+        })
+        .filter((message): message is string => message !== null);
+
+      if (messages.length > 0) return messages.join("; ");
+    }
   }
 
   if (
@@ -89,7 +110,7 @@ export async function checkBackendHealth(): Promise<boolean> {
 }
 
 export async function listDocuments(): Promise<DocumentRecord[]> {
-  const response = await fetch(`${SERVER_API_URL}/api/documents/`, {
+  const response = await fetch(`${SERVER_API_URL}/api/documents`, {
     cache: "no-store",
   });
   return readResponse<DocumentRecord[]>(
@@ -158,13 +179,18 @@ export async function deleteDocument(documentId: number): Promise<void> {
 export async function sendChatMessage(
   query: string,
   topK = 4,
+  documentId?: number,
 ): Promise<ChatResponse> {
-  const response = await fetch(`${BROWSER_API_URL}/api/chat/`, {
+  const response = await fetch(`${BROWSER_API_URL}/api/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ query, top_k: topK }),
+    body: JSON.stringify({
+      query,
+      top_k: topK,
+      document_id: documentId,
+    }),
   });
 
   return readResponse<ChatResponse>(

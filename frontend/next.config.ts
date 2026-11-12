@@ -9,11 +9,20 @@ const apiUrl = (
 const nextConfig: NextConfig = {
   experimental: {
     agentFeedback: true,
+    proxyTimeout: 120_000,
   },
   cacheComponents: true,
   partialPrefetching: true,
   async rewrites() {
     return [
+      {
+        source: "/backend/api/documents",
+        destination: `${apiUrl}/api/documents/`,
+      },
+      {
+        source: "/backend/api/chat",
+        destination: `${apiUrl}/api/chat/`,
+      },
       {
         source: "/backend/:path*",
         destination: `${apiUrl}/:path*`,

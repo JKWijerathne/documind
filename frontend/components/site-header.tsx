@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const links = [
   { href: "/dashboard", label: "Dashboard" },
@@ -7,6 +10,8 @@ const links = [
 ];
 
 export default function SiteHeader() {
+  const pathname = usePathname();
+
   return (
     <header className="sticky top-0 z-20 border-b border-white/10 bg-[#080b12]/85 backdrop-blur-xl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-5 px-5 py-4 sm:px-8">
@@ -23,7 +28,12 @@ export default function SiteHeader() {
             <Link
               key={link.href}
               href={link.href}
-              className="rounded-lg px-3 py-2 text-sm text-slate-400 transition hover:bg-white/5 hover:text-white sm:px-4"
+              aria-current={pathname === link.href ? "page" : undefined}
+              className={`rounded-lg px-3 py-2 text-sm transition hover:bg-white/5 hover:text-white sm:px-4 ${
+                pathname === link.href
+                  ? "bg-white/[0.07] text-white"
+                  : "text-slate-400"
+              }`}
             >
               {link.label}
             </Link>

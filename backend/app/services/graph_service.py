@@ -38,6 +38,7 @@ Rules:
 
 
 class AnswerGenerationError(Exception):
+    """Raised when the language model fails to generate an answer."""
 class GraphState(TypedDict):
 
     question: str

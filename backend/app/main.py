@@ -23,27 +23,19 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(
+api = FastAPI(
     title="DocuMind API",
     description="AI-powered document assistant",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(documents.router)
-app.include_router(search.router)
-app.include_router(chat.router)
+api.include_router(documents.router)
+api.include_router(search.router)
+api.include_router(chat.router)
 
 
-@app.get("/")
+@api.get("/")
 def home():
     return {
         "message": "Welcome to DocuMind API",
@@ -51,14 +43,14 @@ def home():
     }
 
 
-@app.get("/health")
+@api.get("/health")
 def health_check():
     return {
         "status": "healthy"
     }
 
 
-@app.get("/health/db")
+@api.get("/health/db")
 def database_health():
     try:
         with engine.connect() as connection:
@@ -73,3 +65,12 @@ def database_health():
             status_code=503,
             detail="Database connection failed"
         )
+
+
+app = CORSMiddleware(
+    app=api,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import BackendStatus from "@/components/backend-status";
-import SiteHeader from "@/components/site-header";
 
 const highlights = [
   {
@@ -23,7 +22,6 @@ const highlights = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen overflow-hidden bg-[#080b12] text-slate-100">
-      <SiteHeader />
       <main>
         <section className="relative isolate">
           <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
