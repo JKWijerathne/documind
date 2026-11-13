@@ -5,8 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.config import settings
-from app.database import engine, Base
-from app.models import Document, DocumentChunk, Conversation  # noqa: F401 (registers tables)
+from app.database import engine
+from app.models import Base
 from app.routes import documents, search, chat
 from app.services.embedding_service import get_embedding_model
 

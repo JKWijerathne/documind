@@ -27,9 +27,35 @@ export interface DocumentUploadResult {
 }
 
 export interface ChatResponse {
+  conversation_id: number;
   query: string;
   answer: string;
   sources: ChatSource[];
+}
+
+export interface ConversationSummary {
+  id: number;
+  title: string;
+  created_at: string | null;
+  last_message_at: string | null;
+  preview: string;
+}
+
+export interface ConversationMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  sources: ChatSource[];
+  created_at: string | null;
+  document_id: number | null;
+}
+
+export interface ConversationDetail {
+  id: number;
+  title: string;
+  created_at: string | null;
+  document_id: number | null;
+  messages: ConversationMessage[];
 }
 
 function getErrorMessage(payload: unknown, fallback: string): string {
@@ -180,6 +206,7 @@ export async function sendChatMessage(
   query: string,
   topK = 4,
   documentId?: number,
+  conversationId?: number,
 ): Promise<ChatResponse> {
   const response = await fetch(`${BROWSER_API_URL}/api/chat`, {
     method: "POST",
@@ -190,11 +217,35 @@ export async function sendChatMessage(
       query,
       top_k: topK,
       document_id: documentId,
+      conversation_id: conversationId,
     }),
   });
 
   return readResponse<ChatResponse>(
     response,
     "Failed to get a response from the assistant.",
+  );
+}
+
+export async function listConversations(): Promise<ConversationSummary[]> {
+  const response = await fetch(`${BROWSER_API_URL}/api/chat/conversations`, {
+    cache: "no-store",
+  });
+  return readResponse<ConversationSummary[]>(
+    response,
+    "Failed to load your conversation history.",
+  );
+}
+
+export async function getConversation(
+  conversationId: number,
+): Promise<ConversationDetail> {
+  const response = await fetch(
+    `${BROWSER_API_URL}/api/chat/conversations/${conversationId}`,
+    { cache: "no-store" },
+  );
+  return readResponse<ConversationDetail>(
+    response,
+    "Failed to load this conversation.",
   );
 }

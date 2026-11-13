@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg[binary]
+pgvector
+pymupdf
+python-multipart
+sentence-transformers
+google-genai
+pydantic-settings
+langgraph==0.3.34
+langgraph-checkpoint==2.0.21
+langchain-core==0.3.82
+langsmith==0.3.45

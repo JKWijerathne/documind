@@ -64,9 +64,6 @@ export default function LandingPage() {
                   Explore dashboard
                 </Link>
               </div>
-              <p className="mt-5 text-xs text-slate-500">
-                Your files are processed by your DocuMind backend.
-              </p>
             </div>
 
             <div className="relative mx-auto w-full max-w-lg">
@@ -85,9 +82,6 @@ export default function LandingPage() {
                       <p className="mt-1 text-xs text-slate-500">Ready to search</p>
                     </div>
                   </div>
-                  <span className="rounded-full border border-emerald-300/15 bg-emerald-300/[0.08] px-2.5 py-1 text-[10px] font-medium text-emerald-200">
-                    INDEXED
-                  </span>
                 </div>
 
                 <div className="mt-6 flex justify-end">
