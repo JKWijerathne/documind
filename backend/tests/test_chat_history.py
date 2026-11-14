@@ -1,35 +1,9 @@
-import pytest
-from fastapi import FastAPI, HTTPException
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
-
-from app.database import Base, get_db
 from app.models import Document
 from app.routes import chat
 from app.services.graph_service import AnswerGenerationError
 
 
-@pytest.fixture
-def db_session():
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(bind=engine)
-    session_factory = sessionmaker(bind=engine, expire_on_commit=False)
-    session = session_factory()
-
-    try:
-        yield session
-    finally:
-        session.close()
-        engine.dispose()
-
-
-def test_chat_saves_and_resumes_conversations(db_session, monkeypatch):
+def test_chat_saves_and_resumes_conversations(db_session, api_client, monkeypatch):
     document = Document(filename="report.pdf")
     db_session.add(document)
     db_session.commit()
@@ -53,36 +27,31 @@ def test_chat_saves_and_resumes_conversations(db_session, monkeypatch):
 
     monkeypatch.setattr(chat, "run_rag_graph", fake_run_rag_graph)
 
-    app = FastAPI()
-    app.include_router(chat.router)
-    app.dependency_overrides[get_db] = lambda: db_session
+    first_response = api_client.post(
+        "/api/chat/",
+        json={
+            "query": "What is the conclusion?",
+            "document_id": document.id,
+        },
+    )
+    assert first_response.status_code == 200
+    first_payload = first_response.json()
 
-    with TestClient(app) as client:
-        first_response = client.post(
-            "/api/chat/",
-            json={
-                "query": "What is the conclusion?",
-                "document_id": document.id,
-            },
-        )
-        assert first_response.status_code == 200
-        first_payload = first_response.json()
+    second_response = api_client.post(
+        "/api/chat/",
+        json={
+            "query": "Can you summarize that?",
+            "document_id": document.id,
+            "conversation_id": first_payload["conversation_id"],
+        },
+    )
+    assert second_response.status_code == 200
+    second_payload = second_response.json()
 
-        second_response = client.post(
-            "/api/chat/",
-            json={
-                "query": "Can you summarize that?",
-                "document_id": document.id,
-                "conversation_id": first_payload["conversation_id"],
-            },
-        )
-        assert second_response.status_code == 200
-        second_payload = second_response.json()
-
-        history_response = client.get("/api/chat/conversations")
-        detail_response = client.get(
-            f"/api/chat/conversations/{first_payload['conversation_id']}"
-        )
+    history_response = api_client.get("/api/chat/conversations")
+    detail_response = api_client.get(
+        f"/api/chat/conversations/{first_payload['conversation_id']}"
+    )
 
     assert first_payload["conversation_id"] == second_payload["conversation_id"]
     assert graph_calls[1]["conversation_history"] == [
@@ -104,6 +73,7 @@ def test_chat_saves_and_resumes_conversations(db_session, monkeypatch):
 
 def test_failed_generation_does_not_save_an_empty_conversation(
     db_session,
+    api_client,
     monkeypatch,
 ):
     def fail_generation(**kwargs):
@@ -112,26 +82,22 @@ def test_failed_generation_does_not_save_an_empty_conversation(
 
     monkeypatch.setattr(chat, "run_rag_graph", fail_generation)
 
-    with pytest.raises(HTTPException) as error:
-        chat.chat_with_documents(
-            chat.ChatRequest(query="What does the report say?"),
-            db_session,
-        )
+    response = api_client.post(
+        "/api/chat/",
+        json={"query": "What does the report say?"},
+    )
 
-    assert error.value.status_code == 503
+    assert response.status_code == 503
+    assert response.json()["detail"] == "The AI service is temporarily unavailable."
     assert chat.list_conversations(db_session) == []
 
 
-def test_unknown_conversation_returns_not_found(db_session):
-    with pytest.raises(HTTPException) as error:
-        chat.get_conversation(999, db_session)
+def test_unknown_conversation_returns_not_found(api_client):
+    detail_response = api_client.get("/api/chat/conversations/999")
+    chat_response = api_client.post(
+        "/api/chat/",
+        json={"query": "Continue", "conversation_id": 999},
+    )
 
-    assert error.value.status_code == 404
-
-    with pytest.raises(HTTPException) as error:
-        chat.chat_with_documents(
-            chat.ChatRequest(query="Continue", conversation_id=999),
-            db_session,
-        )
-
-    assert error.value.status_code == 404
+    assert detail_response.status_code == 404
+    assert chat_response.status_code == 404
