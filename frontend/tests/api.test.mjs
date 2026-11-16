@@ -1,15 +1,30 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import {
+  ApiError,
   getConversation,
+  getCurrentUser,
   listConversations,
+  loginAccount,
+  logoutAccount,
+  registerAccount,
   sendChatMessage,
 } from "../lib/api.ts";
 
 const originalFetch = globalThis.fetch;
+const originalDocument = globalThis.document;
+
+beforeEach(() => {
+  globalThis.document = { cookie: "documind_csrf=test-csrf-token" };
+});
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  if (originalDocument === undefined) {
+    delete globalThis.document;
+  } else {
+    globalThis.document = originalDocument;
+  }
 });
 
 test("sends document scope and preserves source metadata", async () => {
@@ -44,6 +59,8 @@ test("sends document scope and preserves source metadata", async () => {
     top_k: 4,
     document_id: 7,
   });
+  assert.equal(requestInit.credentials, "include");
+  assert.equal(requestInit.headers["X-CSRF-Token"], "test-csrf-token");
   assert.deepEqual(response.sources, [source]);
 });
 
@@ -152,4 +169,64 @@ test("lists previous conversations", async () => {
 
   assert.equal(requestUrl, "/backend/api/chat/conversations");
   assert.deepEqual(response, conversations);
+});
+
+test("sends credentialed logout with the CSRF cookie in its header", async () => {
+  let requestUrl;
+  let requestInit;
+  globalThis.fetch = async (url, init) => {
+    requestUrl = url;
+    requestInit = init;
+    return new Response(null, { status: 204 });
+  };
+
+  await logoutAccount();
+
+  assert.equal(requestUrl, "/backend/api/auth/logout");
+  assert.equal(requestInit.method, "POST");
+  assert.equal(requestInit.credentials, "include");
+  assert.equal(requestInit.headers["X-CSRF-Token"], "test-csrf-token");
+});
+
+test("login and registration use credentialed same-origin requests without CSRF", async () => {
+  const user = {
+    id: 1,
+    email: "alice@example.com",
+    is_active: true,
+    created_at: "2026-11-16T10:00:00Z",
+    updated_at: "2026-11-16T10:00:00Z",
+  };
+  const requests = [];
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url, init });
+    return new Response(JSON.stringify(user), {
+      status: url.endsWith("/register") ? 201 : 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  await loginAccount("alice@example.com", "StrongPassword!123");
+  await registerAccount("alice@example.com", "StrongPassword!123");
+
+  assert.deepEqual(
+    requests.map(({ url }) => url),
+    ["/backend/api/auth/login", "/backend/api/auth/register"],
+  );
+  for (const { init } of requests) {
+    assert.equal(init.credentials, "include");
+    assert.equal(init.headers["X-CSRF-Token"], undefined);
+  }
+});
+
+test("preserves HTTP 401 status for current-user checks", async () => {
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ detail: "Authentication required." }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  await assert.rejects(
+    getCurrentUser(),
+    (error) => error instanceof ApiError && error.status === 401,
+  );
 });

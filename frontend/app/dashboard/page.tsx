@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import ProtectedRoute from "@/components/protected-route";
 import { deleteDocument, listDocuments, type DocumentRecord } from "@/lib/api";
 
 function formatUploadDate(value: string | null): string {
@@ -98,8 +99,9 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#080b12] text-slate-100">
-      <main className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-16">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-[#080b12] text-slate-100">
+        <main className="mx-auto max-w-7xl px-5 py-12 sm:px-8 sm:py-16">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-indigo-300">Workspace</p>
@@ -251,7 +253,8 @@ export default function DashboardPage() {
             </ul>
           )}
         </section>
-      </main>
-    </div>
+        </main>
+      </div>
+    </ProtectedRoute>
   );
 }

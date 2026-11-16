@@ -6,8 +6,7 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.database import engine
-from app.models import Base
-from app.routes import documents, search, chat
+from app.routes import auth, chat, documents, search
 from app.services.embedding_service import get_embedding_model
 
 
@@ -15,8 +14,6 @@ from app.services.embedding_service import get_embedding_model
 async def lifespan(app: FastAPI):
     with engine.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-
-    Base.metadata.create_all(bind=engine)
 
     get_embedding_model()
 
@@ -33,6 +30,7 @@ api = FastAPI(
 api.include_router(documents.router)
 api.include_router(search.router)
 api.include_router(chat.router)
+api.include_router(auth.router)
 
 
 @api.get("/")
@@ -72,5 +70,5 @@ app = CORSMiddleware(
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["Content-Type", "X-CSRF-Token"],
 )

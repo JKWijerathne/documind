@@ -11,6 +11,7 @@ import {
   type FormEvent,
 } from "react";
 import ReactMarkdown from "react-markdown";
+import ProtectedRoute from "@/components/protected-route";
 import {
   getConversation,
   listConversations,
@@ -51,15 +52,17 @@ function parseDocumentId(value: string | null): number | undefined {
 
 export default function ChatPage() {
   return (
-    <Suspense
-      fallback={
-        <main className="flex min-h-[calc(100vh-73px)] items-center justify-center bg-[#080b12] text-sm text-slate-400">
-          Loading chat…
-        </main>
-      }
-    >
-      <ChatExperience />
-    </Suspense>
+    <ProtectedRoute>
+      <Suspense
+        fallback={
+          <main className="flex min-h-[calc(100vh-73px)] items-center justify-center bg-[#080b12] text-sm text-slate-400">
+            Loading chat…
+          </main>
+        }
+      >
+        <ChatExperience />
+      </Suspense>
+    </ProtectedRoute>
   );
 }
 

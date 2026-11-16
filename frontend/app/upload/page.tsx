@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import ProtectedRoute from "@/components/protected-route";
 import DocumentUploader from "@/components/document-uploader";
 
 export const metadata: Metadata = {
@@ -8,8 +9,9 @@ export const metadata: Metadata = {
 
 export default function UploadPage() {
   return (
-    <div className="min-h-screen bg-[#080b12] text-slate-100">
-      <main className="mx-auto max-w-4xl px-5 py-12 sm:px-8 sm:py-16">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-[#080b12] text-slate-100">
+        <main className="mx-auto max-w-4xl px-5 py-12 sm:px-8 sm:py-16">
         <div className="mb-8">
           <p className="text-sm font-medium text-indigo-300">Your knowledge base</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
@@ -24,7 +26,8 @@ export default function UploadPage() {
         <p className="mt-5 text-center text-xs leading-5 text-slate-500">
           Documents are sent to your configured DocuMind API for processing.
         </p>
-      </main>
-    </div>
+        </main>
+      </div>
+    </ProtectedRoute>
   );
 }

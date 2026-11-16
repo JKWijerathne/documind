@@ -11,9 +11,10 @@ from sqlalchemy.pool import StaticPool
 
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["GEMINI_API_KEY"] = "test-api-key"
+os.environ["AUTH_SECRET_KEY"] = "test-only-auth-secret-key-that-is-at-least-32-chars"
 
 from app.database import Base, get_db
-from app.routes import chat, documents, search
+from app.routes import auth, chat, documents, search
 
 
 @pytest.fixture
@@ -40,6 +41,7 @@ def api_client(db_session):
     app.include_router(documents.router)
     app.include_router(search.router)
     app.include_router(chat.router)
+    app.include_router(auth.router)
     app.dependency_overrides[get_db] = lambda: db_session
 
     with TestClient(app) as client:
