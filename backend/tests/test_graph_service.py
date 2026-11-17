@@ -26,8 +26,8 @@ def test_run_rag_graph_retrieves_context_and_returns_page_sources(monkeypatch):
         embedding_calls.append(query)
         return [0.1, 0.2, 0.3]
 
-    def fake_search(db, query_embedding, top_k, document_id):
-        retrieval_calls.append((db, query_embedding, top_k, document_id))
+    def fake_search(db, query_embedding, user_id, top_k, document_id):
+        retrieval_calls.append((db, query_embedding, user_id, top_k, document_id))
         return [chunk]
 
     def fake_generate_content(*, model, contents, config):
@@ -53,6 +53,7 @@ def test_run_rag_graph_retrieves_context_and_returns_page_sources(monkeypatch):
     result = graph_service.run_rag_graph(
         db=db,
         query="When was the project founded?",
+        user_id=23,
         top_k=2,
         document_id=7,
         conversation_history=[
@@ -67,7 +68,7 @@ def test_run_rag_graph_retrieves_context_and_returns_page_sources(monkeypatch):
         "It started as a small team.\n\n"
         "Current question: When was the project founded?"
     ]
-    assert retrieval_calls == [(db, [0.1, 0.2, 0.3], 2, 7)]
+    assert retrieval_calls == [(db, [0.1, 0.2, 0.3], 23, 2, 7)]
     assert "[project.pdf, Page 3]: The project was founded in 2020." in generation_calls[0][1]
     assert "You: Tell me about this project." in generation_calls[0][1]
     assert "DocuMind: It started as a small team." in generation_calls[0][1]
@@ -129,7 +130,11 @@ def test_gemini_server_error_is_wrapped_with_a_friendly_message(monkeypatch):
         graph_service.AnswerGenerationError,
         match="The AI model is currently experiencing high demand",
     ):
-        graph_service.run_rag_graph(db=Session(), query="When was it founded?")
+        graph_service.run_rag_graph(
+            db=Session(),
+            query="When was it founded?",
+            user_id=7,
+        )
 
 
 def test_chat_route_returns_503_for_generation_errors(monkeypatch):
@@ -147,6 +152,7 @@ def test_chat_route_returns_503_for_generation_errors(monkeypatch):
     with pytest.raises(HTTPException) as error:
         chat.chat_with_documents(
             chat.ChatRequest(query="When was it founded?"),
+            current_user=SimpleNamespace(id=1),
             db=SimpleNamespace(rollback=lambda: None),
         )
 

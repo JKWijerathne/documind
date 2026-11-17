@@ -5,8 +5,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.database import get_db
-from app.models import Conversation, ConversationMessage, Document
+from app.models import Conversation, ConversationMessage, Document, User
 from app.services.graph_service import run_rag_graph, AnswerGenerationError
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,10 @@ def _serialize_message(message: ConversationMessage) -> dict:
 
 
 @router.get("/conversations")
-def list_conversations(db: Session = Depends(get_db)):
+def list_conversations(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     latest_messages = (
         db.query(
             ConversationMessage.conversation_id.label("conversation_id"),
@@ -58,6 +62,7 @@ def list_conversations(db: Session = Depends(get_db)):
             ConversationMessage,
             ConversationMessage.id == latest_messages.c.message_id,
         )
+        .filter(Conversation.user_id == current_user.id)
         .order_by(
             func.coalesce(
                 ConversationMessage.created_at,
@@ -93,10 +98,17 @@ def list_conversations(db: Session = Depends(get_db)):
 
 
 @router.get("/conversations/{conversation_id}")
-def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
+def get_conversation(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     conversation = (
         db.query(Conversation)
-        .filter(Conversation.id == conversation_id)
+        .filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == current_user.id,
+        )
         .first()
     )
     if conversation is None:
@@ -123,14 +135,21 @@ def get_conversation(conversation_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/")
-def chat_with_documents(payload: ChatRequest, db: Session = Depends(get_db)):
+def chat_with_documents(
+    payload: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     if not payload.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     if payload.document_id is not None:
         document = (
             db.query(Document)
-            .filter(Document.id == payload.document_id)
+            .filter(
+                Document.id == payload.document_id,
+                Document.user_id == current_user.id,
+            )
             .first()
         )
         if document is None:
@@ -141,7 +160,10 @@ def chat_with_documents(payload: ChatRequest, db: Session = Depends(get_db)):
     if conversation_id is not None:
         conversation = (
             db.query(Conversation)
-            .filter(Conversation.id == conversation_id)
+            .filter(
+                Conversation.id == conversation_id,
+                Conversation.user_id == current_user.id,
+            )
             .first()
         )
         if conversation is None:
@@ -166,6 +188,7 @@ def chat_with_documents(payload: ChatRequest, db: Session = Depends(get_db)):
         result = run_rag_graph(
             db=db,
             query=payload.query,
+            user_id=current_user.id,
             top_k=payload.top_k,
             document_id=payload.document_id,
             conversation_history=conversation_history,
@@ -180,7 +203,8 @@ def chat_with_documents(payload: ChatRequest, db: Session = Depends(get_db)):
     try:
         if conversation_id is None:
             conversation = Conversation(
-                title=payload.query.strip()[:MAX_CONVERSATION_TITLE_LENGTH]
+                title=payload.query.strip()[:MAX_CONVERSATION_TITLE_LENGTH],
+                user_id=current_user.id,
             )
             db.add(conversation)
             db.flush()

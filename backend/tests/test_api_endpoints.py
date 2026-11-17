@@ -6,7 +6,8 @@ from app.services.retrieval_service import RetrievedChunk
 
 def test_upload_extracts_chunks_and_saves_mock_embeddings(
     db_session,
-    api_client,
+    authenticated_client,
+    test_user,
     make_pdf_bytes,
     monkeypatch,
 ):
@@ -25,7 +26,7 @@ def test_upload_extracts_chunks_and_saves_mock_embeddings(
         ["DocuMind stores searchable text with its PDF page metadata."]
     )
 
-    response = api_client.post(
+    response = authenticated_client.post(
         "/api/documents/upload",
         files={"file": ("manual.pdf", pdf_bytes, "application/pdf")},
     )
@@ -47,14 +48,15 @@ def test_upload_extracts_chunks_and_saves_mock_embeddings(
         .one()
     )
     assert saved_document.filename == "manual.pdf"
+    assert saved_document.user_id == test_user.id
     assert "searchable text" in saved_chunk.content
     assert saved_chunk.page_number == 1
     assert len(saved_chunk.embedding) == 384
     assert embedded_texts == [saved_chunk.content]
 
 
-def test_invalid_pdf_upload_returns_400(api_client):
-    response = api_client.post(
+def test_invalid_pdf_upload_returns_400(authenticated_client):
+    response = authenticated_client.post(
         "/api/documents/upload",
         files={"file": ("broken.pdf", b"not a PDF", "application/pdf")},
     )
@@ -63,9 +65,9 @@ def test_invalid_pdf_upload_returns_400(api_client):
     assert "genuine PDF" in response.json()["detail"]
 
 
-def test_blank_chat_and_search_queries_return_400(api_client):
-    chat_response = api_client.post("/api/chat/", json={"query": "   "})
-    search_response = api_client.post("/api/search/", json={"query": "   "})
+def test_blank_chat_and_search_queries_return_400(authenticated_client):
+    chat_response = authenticated_client.post("/api/chat/", json={"query": "   "})
+    search_response = authenticated_client.post("/api/search/", json={"query": "   "})
 
     assert chat_response.status_code == 400
     assert search_response.status_code == 400
@@ -73,7 +75,7 @@ def test_blank_chat_and_search_queries_return_400(api_client):
     assert search_response.json()["detail"] == "Query cannot be empty."
 
 
-def test_search_api_returns_retrieved_page_sources(api_client, monkeypatch):
+def test_search_api_returns_retrieved_page_sources(authenticated_client, monkeypatch):
     chunk = RetrievedChunk(
         id=18,
         document_id=5,
@@ -89,7 +91,7 @@ def test_search_api_returns_retrieved_page_sources(api_client, monkeypatch):
         lambda **_kwargs: [chunk],
     )
 
-    response = api_client.post(
+    response = authenticated_client.post(
         "/api/search/",
         json={"query": "When did the project launch?", "top_k": 1},
     )

@@ -44,6 +44,7 @@ class AnswerGenerationError(Exception):
 class GraphState(TypedDict):
 
     question: str
+    user_id: int
     top_k: int
     document_id: Optional[int]
     query_embedding: List[float]
@@ -111,6 +112,7 @@ def create_rag_graph():
         chunks = search_similar_chunks_by_embedding(
             db=db,
             query_embedding=state["query_embedding"],
+            user_id=state["user_id"],
             top_k=state["top_k"],
             document_id=state["document_id"],
         )
@@ -193,6 +195,7 @@ _rag_graph = None
 def run_rag_graph(
     db: Session,
     query: str,
+    user_id: int,
     top_k: int = 4,
     document_id: Optional[int] = None,
     conversation_history: Optional[List[dict[str, str]]] = None,
@@ -203,6 +206,7 @@ def run_rag_graph(
 
     initial_state = {
         "question": query,
+        "user_id": user_id,
         "top_k": top_k,
         "document_id": document_id,
         "query_embedding": [],

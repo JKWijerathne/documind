@@ -3,8 +3,13 @@ from app.routes import chat
 from app.services.graph_service import AnswerGenerationError
 
 
-def test_chat_saves_and_resumes_conversations(db_session, api_client, monkeypatch):
-    document = Document(filename="report.pdf")
+def test_chat_saves_and_resumes_conversations(
+    db_session,
+    authenticated_client,
+    test_user,
+    monkeypatch,
+):
+    document = Document(filename="report.pdf", user_id=test_user.id)
     db_session.add(document)
     db_session.commit()
     db_session.refresh(document)
@@ -27,7 +32,7 @@ def test_chat_saves_and_resumes_conversations(db_session, api_client, monkeypatc
 
     monkeypatch.setattr(chat, "run_rag_graph", fake_run_rag_graph)
 
-    first_response = api_client.post(
+    first_response = authenticated_client.post(
         "/api/chat/",
         json={
             "query": "What is the conclusion?",
@@ -37,7 +42,7 @@ def test_chat_saves_and_resumes_conversations(db_session, api_client, monkeypatc
     assert first_response.status_code == 200
     first_payload = first_response.json()
 
-    second_response = api_client.post(
+    second_response = authenticated_client.post(
         "/api/chat/",
         json={
             "query": "Can you summarize that?",
@@ -48,12 +53,13 @@ def test_chat_saves_and_resumes_conversations(db_session, api_client, monkeypatc
     assert second_response.status_code == 200
     second_payload = second_response.json()
 
-    history_response = api_client.get("/api/chat/conversations")
-    detail_response = api_client.get(
+    history_response = authenticated_client.get("/api/chat/conversations")
+    detail_response = authenticated_client.get(
         f"/api/chat/conversations/{first_payload['conversation_id']}"
     )
 
     assert first_payload["conversation_id"] == second_payload["conversation_id"]
+    assert graph_calls[0]["user_id"] == test_user.id
     assert graph_calls[1]["conversation_history"] == [
         {"role": "user", "content": "What is the conclusion?"},
         {"role": "assistant", "content": "Answer to: What is the conclusion?"},
@@ -73,7 +79,8 @@ def test_chat_saves_and_resumes_conversations(db_session, api_client, monkeypatc
 
 def test_failed_generation_does_not_save_an_empty_conversation(
     db_session,
-    api_client,
+    authenticated_client,
+    test_user,
     monkeypatch,
 ):
     def fail_generation(**kwargs):
@@ -82,19 +89,19 @@ def test_failed_generation_does_not_save_an_empty_conversation(
 
     monkeypatch.setattr(chat, "run_rag_graph", fail_generation)
 
-    response = api_client.post(
+    response = authenticated_client.post(
         "/api/chat/",
         json={"query": "What does the report say?"},
     )
 
     assert response.status_code == 503
     assert response.json()["detail"] == "The AI service is temporarily unavailable."
-    assert chat.list_conversations(db_session) == []
+    assert chat.list_conversations(current_user=test_user, db=db_session) == []
 
 
-def test_unknown_conversation_returns_not_found(api_client):
-    detail_response = api_client.get("/api/chat/conversations/999")
-    chat_response = api_client.post(
+def test_unknown_conversation_returns_not_found(authenticated_client):
+    detail_response = authenticated_client.get("/api/chat/conversations/999")
+    chat_response = authenticated_client.post(
         "/api/chat/",
         json={"query": "Continue", "conversation_id": 999},
     )

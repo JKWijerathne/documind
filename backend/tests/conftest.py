@@ -14,7 +14,12 @@ os.environ["GEMINI_API_KEY"] = "test-api-key"
 os.environ["AUTH_SECRET_KEY"] = "test-only-auth-secret-key-that-is-at-least-32-chars"
 
 from app.database import Base, get_db
+from app.auth import create_access_token, create_csrf_token
+from app.config import settings
+from app.models import User
 from app.routes import auth, chat, documents, search
+
+TRUSTED_ORIGIN = "http://localhost:3000"
 
 
 @pytest.fixture
@@ -46,6 +51,48 @@ def api_client(db_session):
 
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture
+def create_user(db_session):
+    def create(email: str) -> User:
+        user = User(email=email, hashed_password="test-hash")
+        db_session.add(user)
+        db_session.commit()
+        db_session.refresh(user)
+        return user
+
+    return create
+
+
+@pytest.fixture
+def test_user(create_user) -> User:
+    return create_user("owner@example.test")
+
+
+@pytest.fixture
+def authenticate_client():
+    def authenticate(client: TestClient, user: User) -> TestClient:
+        csrf_token = create_csrf_token()
+        client.cookies.set(
+            settings.AUTH_COOKIE_NAME,
+            create_access_token(user.id),
+        )
+        client.cookies.set(settings.CSRF_COOKIE_NAME, csrf_token)
+        client.headers.update(
+            {
+                "Origin": TRUSTED_ORIGIN,
+                "X-CSRF-Token": csrf_token,
+            }
+        )
+        return client
+
+    return authenticate
+
+
+@pytest.fixture
+def authenticated_client(api_client, test_user, authenticate_client):
+    return authenticate_client(api_client, test_user)
 
 
 @pytest.fixture

@@ -37,7 +37,7 @@ class Document(Base):
     user_id = Column(
         Integer,
         ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=True,
+        nullable=False,
         index=True,
     )
     filename = Column(String, nullable=False)
@@ -66,7 +66,7 @@ class Conversation(Base):
     user_id = Column(
         Integer,
         ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=True,
+        nullable=False,
         index=True,
     )
     title = Column(String, nullable=True)

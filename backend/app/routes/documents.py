@@ -5,8 +5,9 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.auth import get_current_user
 from app.database import get_db
-from app.models import Document, DocumentChunk
+from app.models import Document, DocumentChunk, User
 from app.services.pdf_service import extract_text_from_pdf
 from app.chunking import chunk_document
 from app.services.embedding_service import generate_batch_embeddings
@@ -22,10 +23,14 @@ CHUNK_OVERLAP = 120
 
 
 @router.get("/")
-def list_documents(db: Session = Depends(get_db)):
+def list_documents(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     documents = (
         db.query(Document, func.count(DocumentChunk.id))
         .outerjoin(DocumentChunk, DocumentChunk.document_id == Document.id)
+        .filter(Document.user_id == current_user.id)
         .group_by(Document.id)
         .order_by(Document.upload_date.desc(), Document.id.desc())
         .all()
@@ -48,7 +53,11 @@ def list_documents(db: Session = Depends(get_db)):
 
 
 @router.post("/upload")
-def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+def upload_document(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     try:
         stream = file.file
 
@@ -79,7 +88,7 @@ def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db))
         pages = extract_text_from_pdf(bytes(contents))
         filename = os.path.basename(file.filename or "") or "untitled.pdf"
 
-        db_document = Document(filename=filename)
+        db_document = Document(filename=filename, user_id=current_user.id)
         db.add(db_document)
         db.flush()
 
@@ -135,8 +144,19 @@ def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db))
 
 
 @router.delete("/{document_id}")
-def delete_document(document_id: int, db: Session = Depends(get_db)):
-    document = db.query(Document).filter(Document.id == document_id).first()
+def delete_document(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    document = (
+        db.query(Document)
+        .filter(
+            Document.id == document_id,
+            Document.user_id == current_user.id,
+        )
+        .first()
+    )
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
 

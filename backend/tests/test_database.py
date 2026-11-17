@@ -1,8 +1,8 @@
 from app.models import Document, DocumentChunk
 
 
-def test_document_chunks_are_saved_and_retrieved(db_session):
-    document = Document(filename="manual.pdf")
+def test_document_chunks_are_saved_and_retrieved(db_session, test_user):
+    document = Document(filename="manual.pdf", user_id=test_user.id)
     db_session.add(document)
     db_session.flush()
 
